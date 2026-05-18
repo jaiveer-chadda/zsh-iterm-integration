@@ -35,11 +35,55 @@ function it2::title() { echo -n "${ESC}]0;$*$BEL"; }
 function it2::tab() {
   if [[ "$1" == 'reset' ]] { echo -n $'\e]6;1;bg;*;default\a'; return; }
 
-  local -ri 10 r=${1:?} g=${2:?} b=${3:?}
+  local -r digs='[0-9]{1,3}'
+  local -r numb=" *$digs *"
+  local -r degs=" *$digs(°|degs?)? *"
+  local -r perc=" *$digs(\.$digs%?)? *"
 
-  echo -n "$ESC]6;1;bg;red;brightness;$r$BEL"
-  echo -n "$ESC]6;1;bg;green;brightness;$g$BEL"
-  echo -n "$ESC]6;1;bg;blue;brightness;$b$BEL"
+  local i col
+  local -a rgb hsl
+
+  local -r input="$*"
+
+  setopt local_options extended_glob
+
+  #¬ `#807ded` `#87E` `807DED` `87e`
+  if [[ "$input" == (|'#')([0-9a-fA-F](#c3))(#c1,2) ]] {
+    col="${input#\#}"
+
+    if (( $#col == 3 )) { rgb=( $col[1]$col[1] $col[2]$col[2] $col[3]$col[3] )
+    } else              { rgb=( $col[1,2]      $col[3,4]      $col[5,6]      )
+    }
+    rgb=(  $(( 16#$rgb[1] ))  $(( 16#$rgb[2] ))  $(( 16#$rgb[3] ))  )
+    echo "rgb = $rgb"
+
+  #¬ `rgb(128, 125, 237)`   `rgb(  128,125 237)`   `(  128   125   237   )`
+  #¬ `128 125 237`   `128,125,237`
+  } elif [[ "$input" =~ "^ *((rgb)?\()?${~numb},?${~numb},?${~numb}\)? *$" ]] {
+
+    # remove the leading `rgb` and `(`, and remove the trailing `)`
+    # then replace all non-digits with spaces
+    col="${${${${input#rgb}#\(}%\)}//[^0-9]/ }"
+    # split at every space, then remove empty elements (`:#`)
+    rgb=( "${(@)${(@s: :)col}:#}" )
+
+    for i ("${(@)rgb}") if (( i > 255 )) { it2::error rgb; return 1; }
+    echo "rgb = $rgb"
+
+  } elif [[ "$input" =~ "^ *((hsl)?\()?${~degs},?${~perc},?${~perc}\)? *$" ]] {
+
+    # remove the leading `hsl` and `(`, and remove the trailing `)`
+    # then replace all non-digits (or decimals) with spaces
+    col="${${${${input#hsl}#\(}%\)}//[^0-9.]/ }"
+    # split at every space, then remove empty elements (`:#`)
+    hsl=( "${(@)${(@s: :)col}:#}" )
+
+    echo "hsl = $hsl"
+  }
+
+  echo -E "\\e]6;1;bg;red;brightness;$rgb[1]\\a"
+  echo -E "\\e]6;1;bg;green;brightness;$rgb[2]\\a"
+  echo -E "\\e]6;1;bg;blue;brightness;$rgb[3]\\a"
 }
 
 # —— TODO ——————————————————————————————————————————————————————————————————— #
@@ -109,4 +153,4 @@ it2::error() {
 
 # ——————————————————————————————————————————————————————————————————————————— #
 
-# spell:ignore annot
+# spell:ignore annot perc
