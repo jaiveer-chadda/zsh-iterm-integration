@@ -60,7 +60,7 @@ function it2::tab() {
 
     # convert each of the digits from hex to decimal
     rgb=(  $(( 16#$rgb[1] ))  $(( 16#$rgb[2] ))  $(( 16#$rgb[3] ))  )
-    formatted_input="#$col"
+    formatted_input="#${(L)col}"
 
   # ———————————————————————————————————————————————————————————— #
 
@@ -113,9 +113,20 @@ function it2::tab() {
   echo -n "$ESC]6;1;bg;green;brightness;$rgb[2]$BEL"
   echo -n "$ESC]6;1;bg;blue;brightness;$rgb[3]$BEL"
 
-  if ! [[ -t 1 ]] return 0
+  # unless both stdout and stderr are ttys, don't display anything
+  if ! [[ -t 1 && -t 2 ]] return 0
 
-  local -r esc_col="${ESC}[48;2;${(j:;:)rgb}m"
+  # W3C – https://www.w3.org/TR/AERT/#color-contrast
+  # Luminance = ( ( 0.299 * R ) + ( 0.587 * G ) + ( 0.114 * B ) )
+  local -rF 10 luminance=$(( rgb[1]*0.299 + rgb[2]*0.587 + rgb[3]*0.114 ))
+
+  # Mark Ransom – https://stackoverflow.com/a/946734
+  # (tho I fiddled around with the exact cutoff)
+  # l > 186  ->  black
+  # l < 186  ->  white
+  local -ri 10 fg_colour=$(( luminance > 132 ? 30 : 37 ))
+
+  local -r esc_col="${ESC}[1;$fg_colour;48;2;${(j:;:)rgb}m"
   local -r reset=$'\e[m'
 
   {
