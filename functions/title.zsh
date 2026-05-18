@@ -7,20 +7,20 @@ alias   it{2,}=iterm
 
 function iterm() {
   local IFS=$' \t\n\0'
-  local -r BEL=$'\a' ESC=$'\e' OSC=$'\e]' leader=$'\e]1337;'
+  local -r BEL=$'\a' ESC=$'\e' leader=$'\e]1337;'
 
   local function="$1"; shift
   local esc_phrase=
 
-  case "$function" in
+  case "$function" {
     ( tab     ) it2::tab   "$@"                       ;;
     ( title   ) it2::title "$@"                       ;;
     ( mark    ) esc_phrase=SetMark                    ;;
     ( focus   ) esc_phrase=StealFocus                 ;;
     ( clear   ) esc_phrase=ClearScrollback            ;;
-    ( notif   ) echo -nE $'\e]9;'"$*$BEL"             ;;
+    ( notif   ) echo -nE "$ESC]9;$*$BEL"              ;;
     ( profile ) echo -nE "${leader}SetProfile=$*$BEL" ;;
-  esac
+  }
 
   local -i 10 ret_code=$?
   if (( $#esc_phrase == 0 || ret_code != 0 )) { return ret_code; }
@@ -33,15 +33,6 @@ function iterm() {
 function it2::title() { echo -n "${ESC}]0;$*$BEL"; }
 
 function it2::tab() {
-  local -r mode="$1"; shift
-
-  case "$mode" {
-    ( bg ) it2::tab::background "$@" ;;
-    ( *  ) echo opt ;;
-  }
-}
-
-function it2::tab::background() {
   if [[ "$1" == 'reset' ]] { echo -n $'\e]6;1;bg;*;default\a'; return; }
 
   local -ri 10 r=${1:?} g=${2:?} b=${3:?}
@@ -58,12 +49,12 @@ function it2::annot() {  #r)FIXME
   local -ri 10 length x_coord y_coord
   local -ri 2 is_hidden=0
 
-  local esc_phrase='Add'; if (( is_hidden )) esc_phrase+='Hidden'
-  esc_phrase+='Annotation'
+  local _esc_phrase='Add'; if (( is_hidden )) _esc_phrase+='Hidden'
+  _esc_phrase+='Annotation'
 
-  echo -nE "$leader$esc_phrase=$message$BEL"
-  # echo -nE "$leader$esc_phrase=$length|$message$BEL"
-  # echo -nE "$leader$esc_phrase=$message|$length|$x_coord|$y_coord$BEL"
+  echo -nE "$leader$_esc_phrase=$message$BEL"
+  # echo -nE "$leader$_esc_phrase=$length|$message$BEL"
+  # echo -nE "$leader$_esc_phrase=$message|$length|$x_coord|$y_coord$BEL"
 }
 
 function it2::highlight_cursor() {  #r)FIXME
@@ -105,7 +96,15 @@ function it2::copy() {  #r)FIXME
 function it2::link() {  #r)FIXME
   # \e ] 8 ; ; https://example.com/ \a Link to example website \e ] 8 ; ; \a
   local -r link="$1" text="$2"
-  echo -nE "$ESC]8;;$link/$BEL$text$ESC]8;;$BEL"
+  echo -nE "$ESC]8;;$link$BEL$text$ESC]8;;$BEL"
+}
+
+# ——————————————————————————————————————————————————————————————————————————— #
+
+
+it2::error() {
+  # rgb
+  echo "error $1" >&2
 }
 
 # ——————————————————————————————————————————————————————————————————————————— #
