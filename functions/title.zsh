@@ -1,5 +1,7 @@
 #!/usr/bin/env zsh
 
+source "${0:h}/hsl_to_rgb.zsh"
+
 unalias it{2,} &>/dev/null
 alias   it{2,}=iterm
 
@@ -40,50 +42,88 @@ function it2::tab() {
   local -r degs=" *$digs(°|degs?)? *"
   local -r perc=" *$digs(\.$digs%?)? *"
 
-  local i col
   local -a rgb hsl
-
-  local -r input="$*"
+  local -i 2 try_hsl
+  local col formatted_input
 
   setopt local_options extended_glob
 
-  #¬ `#807ded` `#87E` `807DED` `87e`
-  if [[ "$input" == (|'#')([0-9a-fA-F](#c3))(#c1,2) ]] {
-    col="${input#\#}"
+  # ———————————————————————————————————————————————————————————— #
 
+  if [[ "$*" == (|'#')([0-9a-fA-F](#c3))(#c1,2) ]] {
+    #¬ `#807ded` `#87E` `807DED` `87e`
+    col="${*#\#}"  # remove the leading hash if it exists
+
+    # if it's a 3-digit hex value, duplicate every character to make it 6-digit
     if (( $#col == 3 )) { rgb=( $col[1]$col[1] $col[2]$col[2] $col[3]$col[3] )
-    } else              { rgb=( $col[1,2]      $col[3,4]      $col[5,6]      )
-    }
-    rgb=(  $(( 16#$rgb[1] ))  $(( 16#$rgb[2] ))  $(( 16#$rgb[3] ))  )
-    echo "rgb = $rgb"
+    } else              { rgb=( $col[1,2]      $col[3,4]      $col[5,6]   ); }
 
-  #¬ `rgb(128, 125, 237)`   `rgb(  128,125 237)`   `(  128   125   237   )`
-  #¬ `128 125 237`   `128,125,237`
-  } elif [[ "$input" =~ "^ *((rgb)?\()?${~numb},?${~numb},?${~numb}\)? *$" ]] {
+    # convert each of the digits from hex to decimal
+    rgb=(  $(( 16#$rgb[1] ))  $(( 16#$rgb[2] ))  $(( 16#$rgb[3] ))  )
+    formatted_input="#$col"
+
+  # ———————————————————————————————————————————————————————————— #
+
+  } elif [[ "$*" =~ "^ *((rgb|RGB)?\()?${~numb},?${~numb},?${~numb}\)? *$" ]] {
+    #¬ `rgb(128, 125, 237)`   `rgb(  128,125 237)`   `(  128   125   237   )`
+    #¬ `128 125 237`   `128,125,237`
 
     # remove the leading `rgb` and `(`, and remove the trailing `)`
     # then replace all non-digits with spaces
-    col="${${${${input#rgb}#\(}%\)}//[^0-9]/ }"
+    col="${${${${*#rgb}#\(}%\)}//[^0-9]/ }"
     # split at every space, then remove empty elements (`:#`)
     rgb=( "${(@)${(@s: :)col}:#}" )
+    formatted_input="rgb(${(j:, :)rgb})"
 
-    for i ("${(@)rgb}") if (( i > 255 )) { it2::error rgb; return 1; }
-    echo "rgb = $rgb"
+    # if either of the last two digits are over 255, we know that the value
+    #  is definitely out of bounds, so print an error and exit immediately
+    if (( rgb[2] > 255 || rgb[3] > 255 )) { it2::error rgb-bounds; return 1; }
+    # but if the first digit is between 266 and 360, it might actually be
+    #  an hsl colour, so reset `$@rgb`, so we can try and test for hsl instead
+    if (( 255 < rgb[1] && rgb[1] <= 360 )) rgb=()
+  }
 
-  } elif [[ "$input" =~ "^ *((hsl)?\()?${~degs},?${~perc},?${~perc}\)? *$" ]] {
+  # ———————————————————————————————————————————————————————————— #
+
+  # only check for hsl if `$@rgb` hasn't been set yet
+  if (( $#rgb == 0 )) \
+    && [[ "$*" =~ "^ *((hsl|HSL)?\()?${~degs},?${~perc},?${~perc}\)? *$" ]] {
 
     # remove the leading `hsl` and `(`, and remove the trailing `)`
     # then replace all non-digits (or decimals) with spaces
-    col="${${${${input#hsl}#\(}%\)}//[^0-9.]/ }"
+    col="${${${${*#hsl}#\(}%\)}//[^0-9.]/ }"
     # split at every space, then remove empty elements (`:#`)
     hsl=( "${(@)${(@s: :)col}:#}" )
 
-    echo "hsl = $hsl"
-  }
+    # if any of the values are out of bounds, throw an error
+    if (( hsl[1] > 360 || hsl[2] > 100 || hsl[2] > 100 )) {
+      it2::error hsl-bounds
+      return 1
+    }
 
-  echo -E "\\e]6;1;bg;red;brightness;$rgb[1]\\a"
-  echo -E "\\e]6;1;bg;green;brightness;$rgb[2]\\a"
-  echo -E "\\e]6;1;bg;blue;brightness;$rgb[3]\\a"
+    rgb=( "${(@s: :)$( hsl_to_rgb "${(@)hsl}" )}" )
+    formatted_input="hsl( $hsl[1]°, $hsl[1]%, $hsl[1]% )"
+  } 
+
+  # ———————————————————————————————————————————————————————————— #
+
+  if (( $#rgb == 0 )) { it2::error colour-format; return 1; }
+
+  echo -n "$ESC]6;1;bg;red;brightness;$rgb[1]$BEL"
+  echo -n "$ESC]6;1;bg;green;brightness;$rgb[2]$BEL"
+  echo -n "$ESC]6;1;bg;blue;brightness;$rgb[3]$BEL"
+
+  if ! [[ -t 1 ]] return 0
+
+  local -r esc_col="${ESC}[48;2;${(j:;:)rgb}m"
+  local -r reset=$'\e[m'
+
+  {
+    echo -n "Set tab background colour to $esc_col$formatted_input$reset"
+    if [[ "$formatted_input" != 'rgb'* ]] \
+      echo -n " == ${esc_col}rgb(${(j:, :)rgb})$reset"
+    echo
+  } >&2
 }
 
 # —— TODO ——————————————————————————————————————————————————————————————————— #
@@ -147,10 +187,13 @@ function it2::link() {  #r)FIXME
 
 
 it2::error() {
-  # rgb
+  # rgb-bounds
+  # hsl-bounds
+  # colour-format
   echo "error $1" >&2
 }
 
 # ——————————————————————————————————————————————————————————————————————————— #
 
 # spell:ignore annot perc
+# spell:ignoreRegExp /(?<=\\[abcefnrtv])\w+\b/g
