@@ -11,6 +11,20 @@ function iterm() {
   local IFS=$' \t\n\0'
   local -r BEL=$'\a' ESC=$'\e' leader=$'\e]1337;'
 
+  # ——————————————————————————————————————————————————————————————————————— #
+
+  local u_colour
+  local -i 2 do_colour=-1  # -1 = auto,  0 = never,  1 = always
+
+  local opt OPTARG OPTIND
+  while { getopts 'c:' opt; } { case "$opt" { ( c ) u_colour="$OPTARG" ;; }; }
+  shift $(( OPTIND - 1 ))
+
+  if [[ "$u_colour" == 'always' ]] do_colour=1
+  if [[ "$u_colour" == 'never'  ]] do_colour=0
+
+  # ——————————————————————————————————————————————————————————————————————— #
+
   local function="$1"; shift
   local esc_phrase=
 
@@ -27,7 +41,10 @@ function iterm() {
   local -i 10 ret_code=$?
   if (( $#esc_phrase == 0 || ret_code != 0 )) { return ret_code; }
 
+  # ——————————————————————————————————————————————————————————————————————— #
+
   echo -n "$leader$esc_phrase$BEL"
+
 }
 
 # —— Done (mostly) —————————————————————————————————————————————————————————— #
@@ -109,30 +126,42 @@ function it2::tab() {
 
   if (( $#rgb == 0 )) { it2::error colour-format; return 1; }
 
-  echo -n "$ESC]6;1;bg;red;brightness;$rgb[1]$BEL"
-  echo -n "$ESC]6;1;bg;green;brightness;$rgb[2]$BEL"
-  echo -n "$ESC]6;1;bg;blue;brightness;$rgb[3]$BEL"
+  local -r rd='red' gr='green' bl='blue'
+  echo -n "$ESC]6;1;bg;$rd;brightness;$rgb[1]$BEL"
+  echo -n "$ESC]6;1;bg;$gr;brightness;$rgb[2]$BEL"
+  echo -n "$ESC]6;1;bg;$bl;brightness;$rgb[3]$BEL"
 
-  # unless both stdout and stderr are ttys, don't display anything
-  if ! [[ -t 1 && -t 2 ]] return 0
+  # ———————————————————————————————————————————————————————————— #
 
-  # W3C – https://www.w3.org/TR/AERT/#color-contrast
-  # Luminance = ( ( 0.299 * R ) + ( 0.587 * G ) + ( 0.114 * B ) )
-  local -rF 10 luminance=$(( rgb[1]*0.299 + rgb[2]*0.587 + rgb[3]*0.114 ))
+  local esc_colour= reset=
+  # only display the colour if
+  #  – the user asked for it (`-c always`)
+  #  OR
+  #  – the output is a tty, AND
+  #  – `$NO_COLOR` is unset, AND
+  #  – the term supports 24-bit colour, AND
+  #  – the user didn't turn it off (`-c never`)
+  if (( do_colour == 1 )) || [[
+    -t 1
+    && -z "$NO_COLOR"
+    && "$do_colour" -ne 0 
+    && "$COLORTERM" == (24bit|truecolor)
+  ]] {
+    # W3C – https://www.w3.org/TR/AERT/#color-contrast
+    local -rF 10 luminance=$(( rgb[1]*0.299 + rgb[2]*0.587 + rgb[3]*0.114 ))
 
-  # Mark Ransom – https://stackoverflow.com/a/946734
-  # (tho I fiddled around with the exact cutoff)
-  # l > 186  ->  black
-  # l < 186  ->  white
-  local -ri 10 fg_colour=$(( luminance > 132 ? 30 : 37 ))
+    # Mark Ransom – https://stackoverflow.com/a/946734
+    # (tho I changed the exact cutoff)
+    local -ri 10 fg_colour=$(( luminance > 132 ? 30 : 37 ))
 
-  local -r esc_col="${ESC}[1;$fg_colour;48;2;${(j:;:)rgb}m"
-  local -r reset=$'\e[m'
+    esc_colour="${ESC}[1;$fg_colour;48;2;${(j:;:)rgb}m"
+    reset=$'\e[m'
+  }
 
   {
-    echo -n "Set tab background colour to $esc_col$formatted_input$reset"
+    echo -n "Set tab background colour to $esc_colour$formatted_input$reset"
     if [[ "$formatted_input" != 'rgb'* ]] \
-      echo -n " == ${esc_col}rgb(${(j:, :)rgb})$reset"
+      echo -n " == ${esc_colour}rgb(${(j:, :)rgb})$reset"
     echo
   } >&2
 }
@@ -207,4 +236,3 @@ it2::error() {
 # ——————————————————————————————————————————————————————————————————————————— #
 
 # spell:ignore annot perc
-# spell:ignoreRegExp /(?<=\\[abcefnrtv])\w+\b/g
