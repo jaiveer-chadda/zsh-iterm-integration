@@ -3,11 +3,18 @@
 source "${0:h}/hsl_to_rgb.zsh"
 
 unalias it{2,} &>/dev/null
-alias   it{2,}=iterm
+alias it{2,}=iterm
+
+alias    mark='iterm mark'
+alias   title='iterm title'
+alias  tabcol='iterm tab'
+alias profile='iterm profile'
 
 # —— Main Function —————————————————————————————————————————————————————————— #
 
 function iterm() {
+  setopt local_options warn_create_global warn_nested_var
+
   local IFS=$' \t\n\0'
   local -r BEL=$'\a' ESC=$'\e' leader=$'\e]1337;'
 
@@ -17,7 +24,7 @@ function iterm() {
   local -i 2 do_colour=-1  # -1 = auto,  0 = never,  1 = always
 
   local opt OPTARG OPTIND
-  while { getopts 'c:' opt; } { case "$opt" { ( c ) u_colour="$OPTARG" ;; }; }
+  while { getopts c: opt; } { case "$opt" { ( c ) u_colour="$OPTARG" ;; }; }
   shift $(( OPTIND - 1 ))
 
   if [[ "$u_colour" == 'always' ]] do_colour=1
@@ -25,17 +32,17 @@ function iterm() {
 
   # ——————————————————————————————————————————————————————————————————————— #
 
-  local function="$1"; shift
+  local -r function="$1"; shift
   local esc_phrase=
 
   case "$function" {
-    ( tab     ) it2::tab   "$@"                       ;;
-    ( title   ) it2::title "$@"                       ;;
-    ( mark    ) esc_phrase=SetMark                    ;;
-    ( focus   ) esc_phrase=StealFocus                 ;;
-    ( clear   ) esc_phrase=ClearScrollback            ;;
-    ( notif   ) echo -nE "$ESC]9;$*$BEL"              ;;
-    ( profile ) echo -nE "${leader}SetProfile=$*$BEL" ;;
+    ( tab     ) it2::tab     "$@"          ;;
+    ( title   ) it2::title   "$@"          ;;
+    ( profile ) it2::profile "$@"          ;;
+    ( mark    ) esc_phrase=SetMark         ;;
+    ( focus   ) esc_phrase=StealFocus      ;;
+    ( clear   ) esc_phrase=ClearScrollback ;;
+    ( notif   ) echo -nE "$ESC]9;$*$BEL"   ;;
   }
 
   local -i 10 ret_code=$?
@@ -44,12 +51,21 @@ function iterm() {
   # ——————————————————————————————————————————————————————————————————————— #
 
   echo -n "$leader$esc_phrase$BEL"
-
 }
 
 # —— Done (mostly) —————————————————————————————————————————————————————————— #
 
 function it2::title() { echo -n "${ESC}]0;$*$BEL"; }
+
+function it2::profile() {
+  if (( $# == 0 )) {
+    echo "$( osascript -e 'tell application "iTerm2" ¬
+      to get profile name of current session of current window'
+    )"
+    return $?
+  }
+  echo -nE "${leader}SetProfile=$*$BEL"
+}
 
 function it2::tab() {
   if [[ "$1" == 'reset' ]] { echo -n $'\e]6;1;bg;*;default\a'; return; }
@@ -166,7 +182,7 @@ function it2::tab() {
   } >&2
 }
 
-# —— TODO ——————————————————————————————————————————————————————————————————— #
+# —— TO DO —————————————————————————————————————————————————————————————————— #
 
 function it2::annot() {  #r)FIXME
   local -r message="$1"
@@ -223,16 +239,21 @@ function it2::link() {  #r)FIXME
   echo -nE "$ESC]8;;$link$BEL$text$ESC]8;;$BEL"
 }
 
-# ——————————————————————————————————————————————————————————————————————————— #
+# —— usage —————————————————————————————————————————————————————————————————— #
 
+function it2::usage() {
+  echo "usage" >&2
+}
+
+# —— error messages ————————————————————————————————————————————————————————— #
 
 it2::error() {
   # rgb-bounds
   # hsl-bounds
   # colour-format
-  echo "error $1" >&2
+  # invalid-profile
+  echo "iterm: error \`$1\`" >&2
 }
-
 # ——————————————————————————————————————————————————————————————————————————— #
 
 # spell:ignore annot perc
